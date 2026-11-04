@@ -22,10 +22,15 @@ class AppConfig {
   /// 用户在手动切换里设定的偏好，true 表示下次仍优先内网
   final bool preferInternal;
 
-  bool get isComplete =>
-      internalUrl.trim().isNotEmpty &&
-      publicUrl.trim().isNotEmpty &&
-      ssid.trim().isNotEmpty;
+  /// 内网地址必填；公网地址可选——只在局域网使用的人可以不填。
+  /// SSID 也可留空，此时只要内网地址可用就走内网（等同「仅内网模式」）。
+  bool get isComplete => internalUrl.trim().isNotEmpty;
+
+  /// 是否只配了内网地址（仅内网模式）。
+  bool get internalOnly => internalUrl.trim().isNotEmpty && publicUrl.trim().isEmpty;
+
+  /// 是否配了公网地址，可用于回退。
+  bool get hasPublic => publicUrl.trim().isNotEmpty;
 
   AppConfig copyWith({
     String? internalUrl,
@@ -53,7 +58,8 @@ class AppConfig {
     final internalUrl = (json['internalUrl'] as String?)?.trim() ?? '';
     final publicUrl = (json['publicUrl'] as String?)?.trim() ?? '';
     final ssid = (json['ssid'] as String?)?.trim() ?? '';
-    if (internalUrl.isEmpty || publicUrl.isEmpty || ssid.isEmpty) return null;
+    // 只有内网地址是必需的：允许只填内网、公网留空。
+    if (internalUrl.isEmpty) return null;
     return AppConfig(
       internalUrl: internalUrl,
       publicUrl: publicUrl,
@@ -79,6 +85,7 @@ class EndpointPlan {
     required this.fallbackKind,
     required this.fallbackUrl,
     required this.reason,
+    this.hasFallback = true,
   });
 
   final EndpointKind primaryKind;
@@ -88,6 +95,9 @@ class EndpointPlan {
 
   /// 供 UI 展示的判定理由，例如「已连接 家庭WiFi」/「当前网络非内网 WiFi」
   final String reason;
+
+  /// 是否有备用地址可切。仅内网模式（未填公网）时为 false。
+  final bool hasFallback;
 }
 
 /// 规范化用户输入的地址：补 scheme、去尾部斜杠。

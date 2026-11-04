@@ -59,8 +59,17 @@ void main() {
       expect(restored.preferInternal, isTrue);
     });
 
-    test('字段缺失时视为无效配置', () {
-      expect(AppConfig.fromJson({'internalUrl': 'http://a'}), isNull);
+    test('只有内网地址也是有效配置（仅内网模式）', () {
+      final internalOnly = AppConfig.fromJson({'internalUrl': 'http://192.0.2.10'});
+      expect(internalOnly, isNotNull);
+      expect(internalOnly!.hasPublic, isFalse);
+      expect(internalOnly.internalOnly, isTrue);
+      expect(internalOnly.isComplete, isTrue);
+    });
+
+    test('缺少内网地址时视为无效配置', () {
+      expect(AppConfig.fromJson({'publicUrl': 'http://a'}), isNull);
+      expect(AppConfig.fromJson({'ssid': 'wifi'}), isNull);
       expect(AppConfig.fromJson(null), isNull);
     });
 

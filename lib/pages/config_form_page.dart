@@ -80,9 +80,12 @@ class _ConfigFormPageState extends State<ConfigFormPage> {
     }
   }
 
-  String? _validateUrl(String? raw, String field) {
+  /// 内网地址必填；公网地址可选（留空即「仅内网模式」）。
+  String? _validateUrl(String? raw, String field, {bool required = true}) {
     final value = (raw ?? '').trim();
-    if (value.isEmpty) return '请填写$field';
+    if (value.isEmpty) {
+      return required ? '请填写$field' : null;
+    }
     final normalized = normalizeUrl(value);
     final uri = Uri.tryParse(normalized);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
@@ -179,7 +182,7 @@ class _ConfigFormPageState extends State<ConfigFormPage> {
                 validator: (v) => _validateUrl(v, '内网地址'),
               ),
               const SizedBox(height: 18),
-              _label('公网地址'),
+              _label('公网地址（可选）'),
               TextFormField(
                 controller: _publicCtrl,
                 keyboardType: TextInputType.url,
@@ -187,13 +190,16 @@ class _ConfigFormPageState extends State<ConfigFormPage> {
                 decoration: const InputDecoration(
                   hintText: 'https://notes.example.com',
                   prefixIcon: Icon(Icons.public, size: 20),
+                  helperText: '只在家里用可以留空，留空后始终走内网地址',
+                  helperMaxLines: 2,
                 ),
-                validator: (v) => _validateUrl(v, '公网地址'),
+                validator: (v) =>
+                    _validateUrl(v, '公网地址', required: false),
               ),
               const SizedBox(height: 18),
               Row(
                 children: [
-                  _label('内网 WiFi 名称'),
+                  _label('内网 WiFi 名称（可选）'),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: _readingSsid ? null : _fillCurrentSsid,
@@ -214,9 +220,9 @@ class _ConfigFormPageState extends State<ConfigFormPage> {
                 decoration: const InputDecoration(
                   hintText: '例如 HomeWiFi',
                   prefixIcon: Icon(Icons.wifi, size: 20),
+                  helperText: '留空则不做 WiFi 判断，内网可达就走内网',
+                  helperMaxLines: 2,
                 ),
-                validator: (v) =>
-                    (v ?? '').trim().isEmpty ? '请填写内网 WiFi 名称' : null,
               ),
               const SizedBox(height: 12),
               const Text(

@@ -27,12 +27,36 @@ void main() {
 
     expect(find.text('连接到你的便签'), findsOneWidget);
     expect(find.text('内网地址'), findsOneWidget);
-    expect(find.text('公网地址'), findsOneWidget);
-    expect(find.text('内网 WiFi 名称'), findsOneWidget);
+    expect(find.text('公网地址（可选）'), findsOneWidget);
+    expect(find.text('内网 WiFi 名称（可选）'), findsOneWidget);
     expect(find.text('保存并连接'), findsOneWidget);
   });
 
-  testWidgets('空表单提交会提示必填', (tester) async {
+  testWidgets('只填内网地址也能提交（仅内网模式）', (tester) async {
+    _useTallSurface(tester);
+    String? publicUrl;
+    await tester.pumpWidget(
+      _wrap(
+        ConfigFormPage(
+          title: '欢迎使用',
+          submitLabel: '保存并连接',
+          onSubmit: (config) async {
+            publicUrl = config.publicUrl;
+          },
+        ),
+      ),
+    );
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), '192.0.2.10:18080');
+    await tester.tap(find.text('保存并连接'));
+    await tester.pumpAndSettle();
+
+    // 公网与 SSID 留空也应通过校验，公网地址为空串
+    expect(publicUrl, '');
+  });
+
+  testWidgets('空表单提交只提示内网地址必填', (tester) async {
     _useTallSurface(tester);
     var submitted = false;
     await tester.pumpWidget(
@@ -52,8 +76,9 @@ void main() {
 
     expect(submitted, isFalse);
     expect(find.text('请填写内网地址'), findsOneWidget);
-    expect(find.text('请填写公网地址'), findsOneWidget);
-    expect(find.text('请填写内网 WiFi 名称'), findsOneWidget);
+    // 公网地址与 SSID 为可选，不应再提示必填
+    expect(find.text('请填写公网地址'), findsNothing);
+    expect(find.text('请填写内网 WiFi 名称'), findsNothing);
   });
 
   testWidgets('填写完整后提交配置', (tester) async {

@@ -6,14 +6,14 @@ import 'package:flutter/foundation.dart';
 import '../models/app_config.dart';
 
 /// 依据「当前 SSID + 用户偏好 + 连通性探测」选出本次要打开的地址。
+///
+/// 支持三种配置：
+/// - 只填内网地址（仅内网模式）：始终走内网，没有公网可回退
+/// - 内网 + 公网 + SSID：连上指定 WiFi 走内网，否则走公网
+/// - 内网 + 公网但 SSID 留空：只要内网可达就走内网，否则走公网
 class EndpointResolver {
   const EndpointResolver();
 
-  /// 判定主地址。
-  ///
-  /// - 连着目标 WiFi 且偏好内网 → 主内网、备公网（探测不通时直接换公网）
-  /// - 连着目标 WiFi 但偏好公网 → 主公网、备内网
-  /// - 不是目标 WiFi → 主公网、备内网（不在内网就没必要等内网超时）
   Future<EndpointPlan> resolve(
     AppConfig config, {
     required String? ssid,
@@ -21,12 +21,31 @@ class EndpointResolver {
   }) async {
     final target = config.ssid.trim();
     final current = ssid?.trim();
-    final onTargetWifi =
+    final ssidConfigured = target.isNotEmpty;
+    final onTargetWifi = ssidConfigured &&
         current != null &&
         current.isNotEmpty &&
         current.toLowerCase() == target.toLowerCase();
 
-    final internalFirst = onTargetWifi && preferInternal;
+    // --- 仅内网模式：没填公网地址，唯一选择就是内网 ---
+    if (!config.hasPublic) {
+      return EndpointPlan(
+        primaryKind: EndpointKind.internal,
+        primaryUrl: config.internalUrl,
+        fallbackKind: EndpointKind.internal,
+        fallbackUrl: config.internalUrl,
+        reason: ssidConfigured
+            ? (onTargetWifi ? '已连接 $target' : _offWifiReason(current))
+            : '仅内网模式',
+        hasFallback: false,
+      );
+    }
+
+    // --- 双地址模式 ---
+    // SSID 留空时不按 WiFi 判断，直接以内网可达性为准。
+    final internalFirst = ssidConfigured
+        ? (onTargetWifi && preferInternal)
+        : preferInternal;
 
     if (!internalFirst) {
       return EndpointPlan(
@@ -34,11 +53,16 @@ class EndpointResolver {
         primaryUrl: config.publicUrl,
         fallbackKind: EndpointKind.internal,
         fallbackUrl: config.internalUrl,
-        reason: onTargetWifi ? '已连接 $target（手动选择公网）' : _offWifiReason(current),
+        reason: ssidConfigured
+            ? (onTargetWifi
+                ? '已连接 $target（手动选择公网）'
+                : _offWifiReason(current))
+            : '手动选择公网',
+        hasFallback: true,
       );
     }
 
-    // 在内网 WiFi 上：先探一下内网地址，避免打开后白屏再回退。
+    // 在内网 WiFi 上（或 SSID 未配置）：先探一下内网地址，避免白屏再回退。
     final reachable = await probe(config.internalUrl);
     if (reachable) {
       return EndpointPlan(
@@ -46,7 +70,8 @@ class EndpointResolver {
         primaryUrl: config.internalUrl,
         fallbackKind: EndpointKind.publicUrl,
         fallbackUrl: config.publicUrl,
-        reason: '已连接 $target',
+        reason: ssidConfigured ? '已连接 $target' : '内网地址可达',
+        hasFallback: true,
       );
     }
     return EndpointPlan(
@@ -54,7 +79,10 @@ class EndpointResolver {
       primaryUrl: config.publicUrl,
       fallbackKind: EndpointKind.internal,
       fallbackUrl: config.internalUrl,
-      reason: '已连接 $target，但内网地址不可达',
+      reason: ssidConfigured
+          ? '已连接 $target，但内网地址不可达'
+          : '内网地址不可达',
+      hasFallback: true,
     );
   }
 
