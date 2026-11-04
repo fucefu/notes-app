@@ -1,0 +1,16 @@
+/.gradle
+/captures/
+/local.properties
+GeneratedPluginRegistrant.java
+.cxx/
+
+# gradle wrapper 必须入库，否则 CI（GitHub Actions）没有 gradlew 无法构建
+# gradle-wrapper.jar
+# /gradlew
+# /gradlew.bat
+
+# Remember to never publicly share your keystore.
+# See https://flutter.dev/to/reference-keystore
+key.properties
+**/*.keystore
+**/*.jks
