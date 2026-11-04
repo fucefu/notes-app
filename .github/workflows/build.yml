@@ -106,6 +106,13 @@ jobs:
       - name: 依赖
         run: flutter pub get
 
+      # 每次先清掉 Pods 与 DerivedData 再重新 pod install，
+      # 避免 Podfile.lock 与 sandbox 状态不同步（The sandbox is not in sync 报错）。
+      - name: 同步 CocoaPods
+        run: |
+          rm -rf ios/Pods ios/Podfile.lock
+          (cd ios && pod install --repo-update)
+
       # 用户使用巨魔（TrollStore）侧载，无需 Apple 签名证书，直接 no-codesign 出包
       - name: 构建 iOS（不签名）
         run: flutter build ios --release --no-codesign
