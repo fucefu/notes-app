@@ -1,5 +1,8 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/app_config.dart';
@@ -44,6 +47,10 @@ class _HomePageState extends State<HomePage> {
   bool _edgeDragActive = false;
   double _edgeDragDistance = 0;
   int _progress = 0;
+
+  /// 网页里的设置面板（浅灰底、全屏）是否打开：打开时状态栏图标要用深色。
+  /// 由注入的 JS 监听面板开关后通过 uiBridge 通道回报。
+  bool _settingsPanelOpen = false;
 
   @override
   void initState() {
@@ -95,6 +102,12 @@ class _HomePageState extends State<HomePage> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(AppPalette.paper)
       ..enableZoom(false)
+      ..addJavaScriptChannel('uiBridge', onMessageReceived: (message) {
+        // 网页里的设置面板开/关 → 状态栏图标明暗要跟着换
+        if (!mounted) return;
+        final open = message.message == 'open';
+        if (_settingsPanelOpen != open) setState(() => _settingsPanelOpen = open);
+      })
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (url) {
@@ -115,6 +128,7 @@ class _HomePageState extends State<HomePage> {
               _loading = false;
               _progress = 100;
             });
+            _injectSafeAreaInsets();
           },
           onWebResourceError: _onResourceError,
           onHttpError: (error) {
@@ -126,6 +140,64 @@ class _HomePageState extends State<HomePage> {
     // notes 是 SPA，设置弹层依赖 localStorage；webview_flutter 在
     // Android / iOS 上默认已启用 DOM Storage，无需额外开关。
     return controller;
+  }
+
+  /// notes 网页的移动端布局靠 `--mobile-safe-area-*` 把系统栏垫进自己的
+  /// 棕色顶栏/底部按钮区。这些变量默认吃 `env(safe-area-inset-*)`，但实测
+  /// 双端都不可靠：Android WebView 里恒为 0（Chromium 限制），iOS 的
+  /// webview_flutter 视口也不上报真实 inset（此前 iOS 顶栏被切就是证据）。
+  /// 因此两端统一由 Flutter 把实测高度注入网页预留的 CSS 变量。
+  ///
+  /// 同时覆盖上游四个「全屏浮层」的安全区缺口（它们按浏览器场景设计，没有
+  /// 预留状态栏）：设置面板头部、图片预览关闭钮、图片裁剪头部、AI 校对头部。
+  /// 另注入 MutationObserver 监听设置面板开关，通知 Flutter 切换状态栏图标
+  /// 明暗（棕色顶栏用白色，浅灰设置栏用深色）。
+  void _injectSafeAreaInsets() {
+    final view = MediaQuery.viewPaddingOf(context);
+    // iOS 保留 Flutter 顶部 SafeArea（网页从状态栏下方开始），再注入 top
+    // 会让棕色顶栏双重加高，因此 iOS 只注入 bottom（刘海屏手势条）；
+    // Android 网页铺到屏幕最顶，top/bottom 都需要注入。
+    final top = Platform.isAndroid ? view.top.toInt() : 0;
+    final bottom = view.bottom.toInt();
+    if (top <= 0 && bottom <= 0) return;
+    _controller?.runJavaScript('''
+(function () {
+  var topPx = '${top}px';
+  var bottomPx = '${bottom}px';
+  var root = document.documentElement;
+  root.style.setProperty('--mobile-safe-area-top', topPx);
+  root.style.setProperty('--mobile-safe-area-bottom', bottomPx);
+
+  if (!document.getElementById('app-safe-area-fix')) {
+    var st = document.createElement('style');
+    st.id = 'app-safe-area-fix';
+    st.textContent = [
+      '@media (max-width: 640px) {',
+      '  .settings-panel-header {',
+      '    padding-top: var(--mobile-safe-area-top);',
+      '    min-height: calc(52px + var(--mobile-safe-area-top));',
+      '  }',
+      '}',
+      '.editor-image-preview-close { top: max(18px, var(--mobile-safe-area-top)); }',
+      '.image-crop-header { padding: var(--mobile-safe-area-top) 16px 0; }',
+      '.ai-review-header { padding-top: max(14px, var(--mobile-safe-area-top)); }'
+    ].join('\\n');
+    document.head.appendChild(st);
+  }
+
+  if (!window.__statusBarBridgeInstalled && window.uiBridge) {
+    window.__statusBarBridgeInstalled = true;
+    var report = function () {
+      var panel = document.querySelector('.settings-panel');
+      var open = !!panel && panel.offsetParent !== null;
+      try { window.uiBridge.postMessage(open ? 'open' : 'closed'); } catch (e) {}
+    };
+    new MutationObserver(report).observe(document.documentElement,
+      { childList: true, subtree: true, attributes: true });
+    report();
+  }
+})();
+    ''');
   }
 
   void _onResourceError(WebResourceError error) {
@@ -418,7 +490,22 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
+    // 网页已加载时顶部是棕色顶栏，状态栏文字要用白色；
+    // Android 沉浸式：网页棕色顶栏垫到状态栏下 → 白色图标，设置面板（浅灰）
+    // 打开时切深色。iOS 保留顶部 SafeArea，状态栏背后是纸色底 → 恒用深色。
+    final onWeb = !_booting && !_failed && _controller != null;
+    final lightIcons = onWeb && Platform.isAndroid && !_settingsPanelOpen;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: lightIcons
+          ? SystemUiOverlayStyle.light.copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: AppPalette.paper,
+              systemNavigationBarIconBrightness: Brightness.dark,
+            )
+          : SystemUiOverlayStyle.dark.copyWith(
+              statusBarColor: Colors.transparent,
+            ),
+      child: PopScope(
       // 只要还在网页里，返回手势先交给网页处理；网页处理不了才退出。
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -426,25 +513,39 @@ class _HomePageState extends State<HomePage> {
         await _handleBack();
       },
       child: Scaffold(
-        // targetSdk 36 在 Android 15 上强制 edge-to-edge，WebView 内容会画到
-        // 状态栏下面，导致网页自己的顶部标题栏（含关闭按钮）被系统栏盖住。
-        // 用 SafeArea 让网页整体落在安全区内。
+        // 顶部留白只在 iOS 需要：iOS 上 WebView 内容会顶进状态栏把网页标题栏切掉，
+        // 用 SafeArea 把网页整体推到状态栏下方。
+        // Android 不做此处理——此前加 SafeArea 是为修 targetSdk 36 的 edge-to-edge
+        // 遮挡，但实测（小米10 Pro / Android 15）网页顶栏本就完整，留白反而在
+        // 高状态栏机型（小米14 / HyperOS 2）上撑出一条纸色空白，故安卓端去掉。
         body: SafeArea(
+          top: !Platform.isAndroid,
           bottom: false,
           child: Column(
             children: [
-              // 进度条固定 2px 高度，不覆盖网页内容
-              SizedBox(
-                height: 2,
-                child: _loading && !_booting
-                    ? LinearProgressIndicator(
-                        value: _progress <= 0 ? null : _progress / 100,
-                        backgroundColor: Colors.transparent,
-                        color: AppPalette.accent.withValues(alpha: .6),
-                      )
-                    : null,
+              // 进度条不再常驻占位：那 2px 的 SizedBox 会在顶栏上方露出一条
+              // 脚手架纸色细缝。改为叠在网页顶部的覆盖层，仅加载时可见。
+              Expanded(
+                child: Stack(
+                  children: [
+                    _buildBodyWithEdgeBack(),
+                    if (_loading && !_booting)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: SizedBox(
+                          height: 2,
+                          child: LinearProgressIndicator(
+                            value: _progress <= 0 ? null : _progress / 100,
+                            backgroundColor: AppPalette.accent.withValues(alpha: .25),
+                            color: Colors.white.withValues(alpha: .85),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-              Expanded(child: _buildBodyWithEdgeBack()),
             ],
           ),
         ),
@@ -465,6 +566,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      ),
       ),
     );
   }
