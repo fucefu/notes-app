@@ -156,19 +156,19 @@ class _HomePageState extends State<HomePage> {
     // 自己吸收系统栏（Android WebView 的 env() 恒为 0，iOS 场景同样不可靠）。
     final top = view.top.toInt();
     final bottom = view.bottom.toInt();
-    if (top <= 0 && bottom <= 0) return;
     _controller?.runJavaScript('''
 (function () {
-  var topPx = '${top}px';
-  var bottomPx = '${bottom}px';
   var root = document.documentElement;
-  root.style.setProperty('--mobile-safe-area-top', topPx);
-  root.style.setProperty('--mobile-safe-area-bottom', bottomPx);
+  root.style.setProperty('--mobile-safe-area-top', '${top}px');
+  root.style.setProperty('--mobile-safe-area-bottom', '${bottom}px');
 
   if (!document.getElementById('app-safe-area-fix')) {
     var st = document.createElement('style');
     st.id = 'app-safe-area-fix';
     st.textContent = [
+      // WKWebView 默认给可点元素闪一层半透明灰（tap highlight），Android 无此
+      // 行为——iOS 点击便签进编辑页时的灰色遮罩即来源于此，双端统一关闭。
+      'html { -webkit-tap-highlight-color: transparent; }',
       '@media (max-width: 640px) {',
       '  .settings-panel-header {',
       '    padding-top: var(--mobile-safe-area-top);',

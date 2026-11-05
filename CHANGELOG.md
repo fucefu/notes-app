@@ -2,6 +2,15 @@
 
 本项目版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.2] - 2026-11-05
+
+### 修改
+
+- 修复 iOS 点击便签时闪现的灰色半透明遮罩：该效果是 WKWebView 默认的
+  `-webkit-tap-highlight-color`（Android WebView 无此行为），注入样式统一关闭。
+- 安全区注入改为无条件执行：此前在状态栏/手势条高度均为 0 的设备上会整体
+  跳过，导致 tap-highlight 等与高度无关的修复一起失效。
+
 ## [1.1.1] - 2026-11-05
 
 ### 新增
@@ -72,6 +81,7 @@
 - GitHub Actions 双端 CI：Android 按 ABI 拆分三份 release APK；
   iOS 走 `--no-codesign` 产出未签名 ipa（供 TrollStore 侧载，无需 Apple 签名）。
 
+[1.1.2]: https://github.com/fucefu/notes-app/releases/tag/v1.1.2
 [1.1.1]: https://github.com/fucefu/notes-app/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fucefu/notes-app/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fucefu/notes-app/releases/tag/v1.0.0

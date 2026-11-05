@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # build 号是 Android versionCode 基数；split-per-abi 时 arm64 包实际
 # versionCode = 2000 + build（v1.1.0 的 arm64 包为 2002）。取 3000 保证
 # 从任何旧版本都能覆盖升级，今后每次发版把 build 号继续 +1。
-version: 1.1.1+3000
+version: 1.1.2+3001
 
 environment:
   sdk: ^3.13.5
