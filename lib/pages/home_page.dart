@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -39,6 +40,9 @@ class _HomePageState extends State<HomePage> {
   bool _failed = false;
   bool _didFallback = false;
   DateTime? _lastBackAt;
+  // iOS 左缘返回手势的拖动状态
+  bool _edgeDragActive = false;
+  double _edgeDragDistance = 0;
   int _progress = 0;
 
   @override
@@ -376,6 +380,42 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// 统一的「返回」处理，Android 返回键与 iOS 边缘滑动都走这里。
+  ///
+  /// 顺序：网页有历史就先后退 → SPA 弹层交给网页自己关 → 两次返回才退出。
+  Future<void> _handleBack() async {
+    if (!mounted) return;
+    final controller = _controller;
+    if (controller == null) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    final navigator = Navigator.of(context);
+
+    // 1) 网页有真实导航历史 → 后退
+    if (await controller.canGoBack()) {
+      await controller.goBack();
+      return;
+    }
+
+    // 2) 没有导航历史，但页面可能有 SPA 弹层 → 让网页自己关
+    if (await _letWebHandleBack()) {
+      return;
+    }
+
+    // 3) 再按一次才真正退出，避免误触
+    final now = DateTime.now();
+    final doubleTap = _lastBackAt != null &&
+        now.difference(_lastBackAt!) < const Duration(seconds: 2);
+    if (!doubleTap) {
+      _lastBackAt = now;
+      _toast('再滑/按一次返回退出');
+      return;
+    }
+    _lastBackAt = null;
+    navigator.maybePop();
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -383,35 +423,7 @@ class _HomePageState extends State<HomePage> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final controller = _controller;
-        if (controller == null) {
-          if (mounted) Navigator.of(context).maybePop();
-          return;
-        }
-        final navigator = Navigator.of(context);
-
-        // 1) 网页有真实导航历史 → 后退
-        if (await controller.canGoBack()) {
-          await controller.goBack();
-          return;
-        }
-
-        // 2) 没有导航历史，但页面可能有 SPA 弹层 → 让网页自己关
-        if (await _letWebHandleBack()) {
-          return;
-        }
-
-        // 3) 再按一次才真正退出，避免误触
-        final now = DateTime.now();
-        final doubleTap = _lastBackAt != null &&
-            now.difference(_lastBackAt!) < const Duration(seconds: 2);
-        if (!doubleTap) {
-          _lastBackAt = now;
-          _toast('再按一次返回退出');
-          return;
-        }
-        _lastBackAt = null;
-        navigator.maybePop();
+        await _handleBack();
       },
       child: Scaffold(
         // targetSdk 36 在 Android 15 上强制 edge-to-edge，WebView 内容会画到
@@ -432,7 +444,7 @@ class _HomePageState extends State<HomePage> {
                       )
                     : null,
               ),
-              Expanded(child: _buildBody()),
+              Expanded(child: _buildBodyWithEdgeBack()),
             ],
           ),
         ),
@@ -454,6 +466,49 @@ class _HomePageState extends State<HomePage> {
               ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
+    );
+  }
+
+  /// iOS 没有可用的系统返回手势（App 是 MaterialApp 根路由，没有 UINavigationController
+  /// 导航栈），所以在屏幕左缘加一条很窄的滑动区，手势行为与 Android 返回键一致。
+  ///
+  /// Android 本身已有系统返回键/侧滑，无需重复处理，这里只在 iOS 上生效。
+  Widget _buildBodyWithEdgeBack() {
+    final body = _buildBody();
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
+      return body;
+    }
+    return Stack(
+      children: [
+        Positioned.fill(child: body),
+        // 左缘 24px 的手势区。用 translucent 让区域内其余触摸仍能落到网页上，
+        // 但横向拖动会被这里识别为返回，避免与网页内部横向滚动打架。
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 24,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragStart: (_) => _edgeDragActive = true,
+            onHorizontalDragUpdate: (details) {
+              if (!_edgeDragActive) return;
+              _edgeDragDistance += details.delta.dx;
+            },
+            onHorizontalDragEnd: (_) async {
+              final dragged = _edgeDragDistance;
+              _edgeDragActive = false;
+              _edgeDragDistance = 0;
+              // 向右拖动超过 60 逻辑像素才算一次返回手势
+              if (dragged > 60) await _handleBack();
+            },
+            onHorizontalDragCancel: () {
+              _edgeDragActive = false;
+              _edgeDragDistance = 0;
+            },
+          ),
+        ),
+      ],
     );
   }
 
