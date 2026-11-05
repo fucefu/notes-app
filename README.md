@@ -40,8 +40,8 @@
 
 到 [Releases](../../releases) 页面下载对应产物。
 
-- **Android**：按手机架构选 `*-arm64-v8a-release.apk`（绝大多数手机用这个），
-  或 `*-armeabi-v7a-release.apk`（老设备）。直接安装即可。
+- **Android**：下载 `*-arm64-v8a-release.apk` 直接安装（64 位真机通用，
+  含小米/华为等绝大多数机型）。
 - **iOS**：下载 `*-ios-unsigned.ipa`，用 **[巨魔（TrollStore）](https://github.com/opa334/TrollStore)**
   直接安装，**不需要 Apple 签名**。非越狱设备需自行签名（AltStore / Sideloadly 等）。
 

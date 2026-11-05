@@ -2,6 +2,24 @@
 
 本项目版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.1] - 2026-11-05
+
+### 新增
+
+- iOS 沉浸式状态栏：与 Android 统一为「网页铺满全屏 + Flutter 注入状态栏
+  高度」方案，棕色顶栏自己吸收状态栏，双端观感一致；状态栏图标明暗
+  联动（棕色顶栏白色，浅灰设置面板深色）同样对 iOS 生效。
+
+### 修改
+
+- **Android 产物精简为单个 arm64-v8a APK**：CI 仍按 ABI 拆分构建，但只发布
+  `*-arm64-v8a-release.apk`（约 18MB），v7a / x86_64 两份构建后丢弃——
+  目标设备均为 arm64，其余两版没有使用场景。
+- **versionCode 基数调整为 build 号 3000**：split 时代 arm64 包 versionCode
+  为 2002（ABI 前缀 2000 + build 2），取 3000 保证从 v1.1.0 及更早版本
+  均可正常覆盖升级。今后发版 build 号继续递增。
+- CI android job 产物命名为 `notes-app-<version>-arm64-v8a-release.apk`。
+
 ## [1.1.0] - 2026-11-05
 
 ### 新增
@@ -54,5 +72,6 @@
 - GitHub Actions 双端 CI：Android 按 ABI 拆分三份 release APK；
   iOS 走 `--no-codesign` 产出未签名 ipa（供 TrollStore 侧载，无需 Apple 签名）。
 
+[1.1.1]: https://github.com/fucefu/notes-app/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fucefu/notes-app/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fucefu/notes-app/releases/tag/v1.0.0

@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -154,10 +152,9 @@ class _HomePageState extends State<HomePage> {
   /// 明暗（棕色顶栏用白色，浅灰设置栏用深色）。
   void _injectSafeAreaInsets() {
     final view = MediaQuery.viewPaddingOf(context);
-    // iOS 保留 Flutter 顶部 SafeArea（网页从状态栏下方开始），再注入 top
-    // 会让棕色顶栏双重加高，因此 iOS 只注入 bottom（刘海屏手势条）；
-    // Android 网页铺到屏幕最顶，top/bottom 都需要注入。
-    final top = Platform.isAndroid ? view.top.toInt() : 0;
+    // 双端统一：网页铺满全屏，top/bottom 都注入，由网页棕色顶栏/底部按钮区
+    // 自己吸收系统栏（Android WebView 的 env() 恒为 0，iOS 场景同样不可靠）。
+    final top = view.top.toInt();
     final bottom = view.bottom.toInt();
     if (top <= 0 && bottom <= 0) return;
     _controller?.runJavaScript('''
@@ -491,10 +488,10 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     // 网页已加载时顶部是棕色顶栏，状态栏文字要用白色；
-    // Android 沉浸式：网页棕色顶栏垫到状态栏下 → 白色图标，设置面板（浅灰）
-    // 打开时切深色。iOS 保留顶部 SafeArea，状态栏背后是纸色底 → 恒用深色。
+    // 双端沉浸式后状态栏背后都是网页内容：棕色顶栏 → 白色图标；
+    // 设置面板（浅灰）打开或引导/错误页（纸色）→ 深色图标。
     final onWeb = !_booting && !_failed && _controller != null;
-    final lightIcons = onWeb && Platform.isAndroid && !_settingsPanelOpen;
+    final lightIcons = onWeb && !_settingsPanelOpen;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: lightIcons
           ? SystemUiOverlayStyle.light.copyWith(
@@ -513,13 +510,12 @@ class _HomePageState extends State<HomePage> {
         await _handleBack();
       },
       child: Scaffold(
-        // 顶部留白只在 iOS 需要：iOS 上 WebView 内容会顶进状态栏把网页标题栏切掉，
-        // 用 SafeArea 把网页整体推到状态栏下方。
-        // Android 不做此处理——此前加 SafeArea 是为修 targetSdk 36 的 edge-to-edge
-        // 遮挡，但实测（小米10 Pro / Android 15）网页顶栏本就完整，留白反而在
-        // 高状态栏机型（小米14 / HyperOS 2）上撑出一条纸色空白，故安卓端去掉。
+        // 双端统一沉浸式：WebView 铺满全屏，状态栏区域由网页自己的棕色顶栏
+        // 吸收（高度经 _injectSafeAreaInsets 写入 CSS 变量）。
+        // iOS 此前保留顶部 SafeArea 是因为当时还没有注入机制，网页顶栏会被
+        // 状态栏切掉；注入方案落地后两端走同一套逻辑。
         body: SafeArea(
-          top: !Platform.isAndroid,
+          top: false,
           bottom: false,
           child: Column(
             children: [
