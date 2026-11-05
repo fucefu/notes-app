@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标背景层：暖白纸感 #FAF6EF，与 App 内主题一致 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FAF6EF" />
+</shape>
