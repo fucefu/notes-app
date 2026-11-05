@@ -135,6 +135,7 @@ jobs:
     needs: [meta, android, ios]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -145,21 +146,35 @@ jobs:
           find artifacts -type f \( -name "*.apk" -o -name "*.ipa" -o -name "SHA256SUMS*" \) -exec cp {} dist/ \;
           ls -lh dist/
 
+      - name: 截取本版本更新日志
+        id: notes
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          # 从 CHANGELOG.md 取 "## [x.y.z]" 到下一个 "## [" 之间的段落
+          awk -v v="## [$VERSION]" '
+            index($0, v) == 1 { grab=1; next }
+            grab && substr($0, 1, 4) == "## [" { exit }
+            grab { print }
+          ' CHANGELOG.md > version_section.md
+          {
+            echo "## 安装说明"
+            echo
+            echo "- **Android**：下载对应 ABI 的 \`*-release.apk\` 直接安装。"
+            echo "- **iOS**：下载 \`*-ios-unsigned.ipa\`，用**巨魔（TrollStore）**直接安装（无需签名）。"
+            echo "  非越狱设备需自签（AltStore / Sideloadly 等）。"
+            echo
+            echo "---"
+            echo
+            cat version_section.md
+          } > release_body.md
+          echo "本版更新内容："
+          cat version_section.md
+
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
           name: ${{ needs.meta.outputs.tag }}
           files: dist/*
-          generate_release_notes: true
-          body: |
-            ## 安装说明
-
-            - **Android**：下载对应 ABI 的 `*-release.apk` 直接安装。
-            - **iOS**：下载 `*-ios-unsigned.ipa`，用**巨魔（TrollStore）**直接安装（无需签名）。
-              非越狱设备需自签（AltStore / Sideloadly 等）。
-
-            ## 首次使用
-
-            打开 App 后在引导页填三项：内网地址、公网地址、内网 WiFi 名称（可点「读取当前」自动填）。
-            连上指定 WiFi 时优先走内网地址，否则走公网域名。
+          body_path: release_body.md
